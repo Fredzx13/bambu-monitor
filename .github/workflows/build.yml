@@ -1,0 +1,32 @@
+name: Build firmware
+on:
+  workflow_dispatch:
+  push:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install platformio esptool
+      - run: pio run
+      - name: Fusionner en .bin (un par variante)
+        run: |
+          BOOT=$(find ~/.platformio/packages/framework-arduinoespressif32 -name boot_app0.bin | head -1)
+          for pair in "jc4827w543:PSRAM-octale" "jc4827w543_quad:PSRAM-quad"; do
+            env=${pair%%:*}; name=${pair##*:}
+            B=.pio/build/$env
+            python -m esptool --chip esp32s3 merge_bin -o bambu-monitor-$name.bin \
+              --flash_mode qio --flash_size 4MB \
+              0x0 $B/bootloader.bin 0x8000 $B/partitions.bin 0xe000 "$BOOT" 0x10000 $B/firmware.bin
+          done
+      - name: Publier les .bin dans Releases (téléchargement direct, sans zip)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: firmware-${{ github.run_number }}
+          name: Firmware ${{ github.run_number }}
+          files: bambu-monitor-*.bin
